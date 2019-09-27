@@ -1,5 +1,6 @@
 package com.capitalone.dashboard.evaluator;
 
+import com.capitalone.dashboard.client.RestClient;
 import com.capitalone.dashboard.model.AuditException;
 import com.capitalone.dashboard.model.CollectorItem;
 import com.capitalone.dashboard.model.CollectorType;
@@ -12,28 +13,31 @@ import com.capitalone.dashboard.model.TestCaseStep;
 import com.capitalone.dashboard.model.TestResult;
 import com.capitalone.dashboard.model.TestSuite;
 import com.capitalone.dashboard.model.TestSuiteType;
+import com.capitalone.dashboard.repository.CmdbRepository;
 import com.capitalone.dashboard.repository.TestResultRepository;
 import com.capitalone.dashboard.response.PerformanceTestAuditResponse;
 import com.capitalone.dashboard.response.TestResultsAuditResponse;
 import com.capitalone.dashboard.status.PerformanceTestAuditStatus;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
+import org.json.simple.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Component
 public class PerformanceTestResultEvaluator extends Evaluator<PerformanceTestAuditResponse> {
 
     private final TestResultRepository testResultRepository;
+
 
 
     @Autowired
@@ -46,19 +50,56 @@ public class PerformanceTestResultEvaluator extends Evaluator<PerformanceTestAud
     public Collection<PerformanceTestAuditResponse> evaluate(Dashboard dashboard, long beginDate, long endDate, Map<?, ?> dummy) throws AuditException {
         List<CollectorItem> testItems = getCollectorItems(dashboard, "codeanalysis", CollectorType.Test);
         Collection<TestResultsAuditResponse> responses = new ArrayList<>();
-        if (CollectionUtils.isEmpty(testItems)) {
-            throw new AuditException("No tests configured", AuditException.NO_COLLECTOR_ITEM_CONFIGURED);
+       Map<String,String> rik_level = new HashMap<>();
+        if(settings.isPerformanceRiskPriority()){
+            String res = getSession(dashboard);
+            rik_level.put("priority", res);
+        }else {
+            rik_level.put("priority", null);
         }
 
-        return testItems.stream().map(item -> evaluate(item, beginDate, endDate, null)).collect(Collectors.toList());
+        List<CollectorItem> perfItems = new ArrayList<>();
+        if(CollectionUtils.isNotEmpty(testItems)){
+            testItems.forEach(item -> {
+                TestResult testResult = testResultRepository.findByCollectorItemId(item.getId());
+                if(testResult != null) {
+                    if ((TestSuiteType.Performance).equals(testResultRepository.findByCollectorItemId(item.getId()).getType())) {
+                        perfItems.add(item);
+                    }
+                }
+            });
+        }
+        if (CollectionUtils.isEmpty(perfItems)) {
+            throw new AuditException("No tests configured", AuditException.NO_COLLECTOR_ITEM_CONFIGURED);
+        }
+        return perfItems.stream().map(item -> evaluate(item, beginDate, endDate, rik_level)).collect(Collectors.toList());
+    }
+
+    public String getSession(Dashboard dashboard) {
+
+        String bap = dashboard.getApplication().getName();
+
+        RestTemplate restTemplate = new RestTemplate();
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(settings.getHerculesRiskAssessmentUrl()).queryParam("bap",bap);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Authorization", settings.getHerculesApiToken());
+        HttpEntity<String> entity = new HttpEntity<String>(headers);
+        ResponseEntity<JSONObject> res = restTemplate.exchange(builder.toUriString(),HttpMethod.GET ,entity , JSONObject.class);
+        List<Map<String,String>> auditJO = (List<Map<String, String>>) res.getBody().get("content");
+        if(auditJO.size()>0){
+            return auditJO.get(0).get("risk_level");
+        }else{
+            return null;
+        }
+
     }
 
     @Override
-    public PerformanceTestAuditResponse evaluate(CollectorItem collectorItem, long beginDate, long endDate, Map<?, ?> dummy) {
-        return getPerformanceTestAudit(collectorItem, beginDate, endDate);
+    public PerformanceTestAuditResponse evaluate(CollectorItem collectorItem, long beginDate, long endDate, Map<?, ?> risk) {
+        return getPerformanceTestAudit(collectorItem, beginDate, endDate, risk);
     }
 
-    private PerformanceTestAuditResponse getPerformanceTestAudit(CollectorItem perfItem, long beginDate, long endDate) {
+    private PerformanceTestAuditResponse getPerformanceTestAudit(CollectorItem perfItem, long beginDate, long endDate, Map<?,?> risk) {
 
         PerformanceTestAuditResponse perfReviewResponse = new PerformanceTestAuditResponse();
         if (perfItem == null) {
@@ -66,7 +107,8 @@ public class PerformanceTestResultEvaluator extends Evaluator<PerformanceTestAud
             return perfReviewResponse;
         }
         perfReviewResponse.setAuditEntity(perfItem.getOptions());
-        List<TestResult> testResults = testResultRepository.findByCollectorItemIdAndTimestampIsBetweenOrderByTimestampDesc(perfItem.getId(), beginDate-1, endDate+1);
+        perfReviewResponse.setLastUpdated(perfItem.getLastUpdated());
+        List<TestResult> testResults = testResultRepository.findByCollectorItemIdAndTypeAndTimestampIsBetweenOrderByTimestampDesc(perfItem.getId(),"Performance" ,beginDate-1 ,endDate+1);
         List<PerfTest> testlist = new ArrayList<>();
 
         if (!CollectionUtils.isEmpty(testResults)){
@@ -125,7 +167,7 @@ public class PerformanceTestResultEvaluator extends Evaluator<PerformanceTestAud
                         test.setRunId(testResult.getExecutionId());
                         test.setStartTime(testResult.getStartTime());
                         test.setEndTime(testResult.getEndTime());
-                        test.setResultStatus(testResult.getResultStatus());
+                        test.setResultStatus(testResult.getDescription());
                         test.setPerfIndicators(kpilist);
                         test.setTestName(testSuite.getDescription());
                         test.setTimeStamp(testResult.getTimestamp());
@@ -140,11 +182,27 @@ public class PerformanceTestResultEvaluator extends Evaluator<PerformanceTestAud
                         PerformanceTestAuditStatus.PERF_RESULT_AUDIT_OK : PerformanceTestAuditStatus.PERF_RESULT_AUDIT_FAIL);
             }
         }
-        if (CollectionUtils.isEmpty(testlist)) {
+        if((risk.get("priority") == null) && CollectionUtils.isEmpty(testlist)){
             perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERF_RESULT_AUDIT_MISSING);
-        }else {
-            perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERFORMANCE_COMMIT_IS_CURRENT);
-        }
+        }else if (CollectionUtils.isEmpty(testlist) && risk.get("priority").equals("High")) {
+            perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERF_RESULT_AUDIT_MISSING);
+            perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERF_RESULT_AUDIT_FAIL);
+            perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERF_NO_RESULT_RISK_HIGH);
+            perfReviewResponse.setLastUpdated(perfItem.getLastUpdated());
+        }else if(CollectionUtils.isEmpty(testlist) && risk.get("priority").equals("Medium")) {
+            perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERF_RESULT_AUDIT_MISSING);
+            perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERF_RESULT_AUDIT_FAIL);
+            perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERF_NO_RESULT_RISK_MEDIUM);
+
+        }else if(CollectionUtils.isEmpty(testlist) && risk.get("priority").equals("Low")){
+                perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERF_RESULT_AUDIT_MISSING);
+                perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERF_RESULT_AUDIT_OK);
+                perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERF_NO_RESULT_RISK_LOW);
+            }
+            else {
+                perfReviewResponse.addAuditStatus(PerformanceTestAuditStatus.PERFORMANCE_COMMIT_IS_CURRENT);
+            }
+
         return perfReviewResponse;
     }
 }

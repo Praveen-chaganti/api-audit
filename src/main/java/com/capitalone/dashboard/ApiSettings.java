@@ -46,6 +46,10 @@ public class ApiSettings {
     @Value("${criticalLicenseVulnerabilitiesAge:0}")
     private int criticalLicenseVulnerabilitiesAge;
     private String buildStageRegEx;
+    private String herculesRiskAssessmentUrl;
+    private String herculesApiToken;
+    @Value("${PerformanceRiskPriority:false}")
+    private boolean PerformanceRiskPriority;
 
     public String getKey() {
         return key;
@@ -223,5 +227,16 @@ public class ApiSettings {
         this.buildStageRegEx = buildStageRegEx;
     }
 
+    public String getHerculesRiskAssessmentUrl() { return herculesRiskAssessmentUrl;    }
+
+    public void setHerculesRiskAssessmentUrl(String herculesRiskAssessmentUrl) { this.herculesRiskAssessmentUrl = herculesRiskAssessmentUrl; }
+
+    public String getHerculesApiToken() { return herculesApiToken; }
+
+    public void setHerculesApiToken(String herculesApiToken) { this.herculesApiToken = herculesApiToken; }
+
+    public boolean isPerformanceRiskPriority() { return PerformanceRiskPriority; }
+
+    public void setPerformanceRiskPriority(boolean performanceRiskPriority) { PerformanceRiskPriority = performanceRiskPriority; }
 
 }

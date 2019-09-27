@@ -20,7 +20,9 @@ import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -47,8 +49,11 @@ public class PerformanceTestResultEvaluatorTest {
 
         List<TestResult> tr = makeTestResult("KPI : Avg response times","Success");
 
-        when(testResultRepository.findByCollectorItemIdAndTimestampIsBetweenOrderByTimestampDesc(any(ObjectId.class),any(Long.class),any(Long.class))).thenReturn(tr);
-        PerformanceTestAuditResponse responseV2 = performanceTestResultEvaluator.evaluate(makeCollectorItem(0),125634536, 6235263, null);
+        when(testResultRepository.findByCollectorItemIdAndTypeAndTimestampIsBetweenOrderByTimestampDesc(any(ObjectId.class),any(String.class),any(Long.class),any(Long.class))).thenReturn(tr);
+        Map<String,String> rik_level = new HashMap<>();
+        rik_level.put("priority", "High");
+        PerformanceTestAuditResponse responseV2 = performanceTestResultEvaluator.evaluate(makeCollectorItem(0),1523505797, 1523505798, rik_level);
+        System.out.println(responseV2.getAuditStatuses().toString());
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_COMMIT_IS_CURRENT"));
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_THRESHOLDS_RESPONSE_TIME_FOUND"));
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_MET"));
@@ -63,9 +68,10 @@ public class PerformanceTestResultEvaluatorTest {
 
 
         List<TestResult> tr = makeTestResult("KPI : Transaction Per Second","Success");
-
-        when(testResultRepository.findByCollectorItemIdAndTimestampIsBetweenOrderByTimestampDesc(any(ObjectId.class),any(Long.class),any(Long.class))).thenReturn(tr);
-        PerformanceTestAuditResponse responseV2 = performanceTestResultEvaluator.evaluate(makeCollectorItem(0),125634536, 6235263, null);
+        Map<String,String> rik_level = new HashMap<>();
+        rik_level.put("priority", "High");
+        when(testResultRepository.findByCollectorItemIdAndTypeAndTimestampIsBetweenOrderByTimestampDesc(any(ObjectId.class),any(String.class),any(Long.class),any(Long.class))).thenReturn(tr);
+        PerformanceTestAuditResponse responseV2 = performanceTestResultEvaluator.evaluate(makeCollectorItem(0),125634536, 6235263, rik_level);
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_COMMIT_IS_CURRENT"));
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_THRESHOLDS_TRANSACTIONS_PER_SECOND_FOUND"));
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_MET"));
@@ -77,9 +83,10 @@ public class PerformanceTestResultEvaluatorTest {
     public void evaluate_AuditStatus_PERFORMANCE_THRESHOLDS_ERROR_RATE_FOUND() {
 
         List<TestResult> tr = makeTestResult("KPI : Error Rate Threshold","Success");
-
-        when(testResultRepository.findByCollectorItemIdAndTimestampIsBetweenOrderByTimestampDesc(any(ObjectId.class),any(Long.class),any(Long.class))).thenReturn(tr);
-        PerformanceTestAuditResponse responseV2 = performanceTestResultEvaluator.evaluate(makeCollectorItem(0),125634536, 6235263, null);
+        Map<String,String> rik_level = new HashMap<>();
+        rik_level.put("priority", "High");
+        when(testResultRepository.findByCollectorItemIdAndTypeAndTimestampIsBetweenOrderByTimestampDesc(any(ObjectId.class),any(String.class),any(Long.class),any(Long.class))).thenReturn(tr);
+        PerformanceTestAuditResponse responseV2 = performanceTestResultEvaluator.evaluate(makeCollectorItem(0),125634536, 6235263, rik_level);
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_COMMIT_IS_CURRENT"));
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_THRESHOLDS_ERROR_RATE_FOUND"));
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_MET"));
@@ -91,14 +98,43 @@ public class PerformanceTestResultEvaluatorTest {
     @Test
     public void evaluate_AuditStatus_PERFORMANCE_RESULT_STATUS_NULL() {
         List<TestResult> tr = makeTestResult("KPI : Error Rate Threshold",null);
-        when(testResultRepository.findByCollectorItemIdAndTimestampIsBetweenOrderByTimestampDesc(any(ObjectId.class),any(Long.class),any(Long.class))).thenReturn(tr);
-        PerformanceTestAuditResponse responseV2 = performanceTestResultEvaluator.evaluate(makeCollectorItem(0),125634536, 6235263, null);
+        Map<String,String> rik_level = new HashMap<>();
+        rik_level.put("priority", "High");
+        when(testResultRepository.findByCollectorItemIdAndTypeAndTimestampIsBetweenOrderByTimestampDesc(any(ObjectId.class),any(String.class),any(Long.class),any(Long.class))).thenReturn(tr);
+        PerformanceTestAuditResponse responseV2 = performanceTestResultEvaluator.evaluate(makeCollectorItem(0),125634536, 6235263, rik_level);
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_COMMIT_IS_CURRENT"));
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_THRESHOLDS_ERROR_RATE_FOUND"));
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_MET"));
         Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERFORMANCE_THRESHOLD_ERROR_RATE_MET"));
-        Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERF_RESULT_AUDIT_FAIL"));
+        Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERF_RESULT_AUDIT_OK"));
         Assert.assertEquals(true, responseV2.getAuditEntity().toString().contains("url"));
+    }
+
+    @Test
+    public void evaluate_AuditStatus_PERFORMANCE_RESULT_MISSING_Risk_High(){
+        Map<String,String> rik_level = new HashMap<>();
+        rik_level.put("priority", "High");
+        when(testResultRepository.findByCollectorItemIdAndTypeAndTimestampIsBetweenOrderByTimestampDesc(any(ObjectId.class),any(String.class),any(Long.class),any(Long.class))).thenReturn(null);
+        PerformanceTestAuditResponse responseV2 = performanceTestResultEvaluator.evaluate(makeCollectorItem(0),125634536, 6235263, rik_level);
+       System.out.println(responseV2.getAuditStatuses());
+        Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERF_RESULT_AUDIT_MISSING"));
+        Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERF_RESULT_AUDIT_FAIL"));
+        Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERF_NO_RESULT_RISK_HIGH"));
+
+
+    }
+    @Test
+    public void evaluate_AuditStatus_PERFORMANCE_RESULT_MISSING_Risk_LOW(){
+        Map<String,String> rik_level = new HashMap<>();
+        rik_level.put("priority", "Low");
+        when(testResultRepository.findByCollectorItemIdAndTypeAndTimestampIsBetweenOrderByTimestampDesc(any(ObjectId.class),any(String.class),any(Long.class),any(Long.class))).thenReturn(null);
+        PerformanceTestAuditResponse responseV2 = performanceTestResultEvaluator.evaluate(makeCollectorItem(0),125634536, 6235263, rik_level);
+        System.out.println(responseV2.getAuditStatuses());
+        Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERF_RESULT_AUDIT_MISSING"));
+        Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERF_RESULT_AUDIT_OK"));
+        Assert.assertEquals(true, responseV2.getAuditStatuses().toString().contains("PERF_NO_RESULT_RISK_LOW"));
+
+
     }
 
 
@@ -106,6 +142,7 @@ public class PerformanceTestResultEvaluatorTest {
 
     private CollectorItem makeCollectorItem(int lastUpdated) {
         CollectorItem item = new CollectorItem();
+        item.setId(new ObjectId("57f2a0193b55670a9e06d63a"));
         item.setCollectorId(ObjectId.get());
         item.setEnabled(true);
         item.getOptions().put("jobName", "testHygieiaPerf");
